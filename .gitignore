@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+Deploy/
+tsconfig.tsbuildinfo
+
+# Database
+backend/Database/*.db
+backend/Database/*.db-shm
+backend/Database/*.db-wal
+
+# Env
+.env
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+
+
