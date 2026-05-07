@@ -1,10 +1,11 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import { authApi } from '../services/api';
+import { type VaiTroType } from '../constants';
 
 export interface UserInfo {
   maTaiKhoan: string;
   tenDangNhap: string;
-  vaiTro: 'THU_THU' | 'QUAN_TRI_VIEN';
+  vaiTro: VaiTroType;
 }
 
 interface AuthContextType {

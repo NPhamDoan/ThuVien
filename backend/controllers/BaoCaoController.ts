@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { PhieuMuon, InventoryReport, TrangThaiPhieu, TinhTrangSach } from '../types';
+import { PhieuMuon, InventoryReport, TrangThaiPhieu } from '../types';
 
 export class BaoCaoController {
   private db: Database.Database;
@@ -10,33 +10,31 @@ export class BaoCaoController {
 
   getOverdueLoans(): PhieuMuon[] {
     const rows = this.db.prepare(
-      "SELECT * FROM PhieuMuon WHERE trangThai = 'DANG_MUON' AND hanTra < date('now')"
-    ).all() as Record<string, unknown>[];
+      "SELECT * FROM PhieuMuon WHERE trangThai = ? AND hanTra < date('now')"
+    ).all(TrangThaiPhieu.DANG_MUON) as Record<string, unknown>[];
 
     return rows.map((row) => this.mapRowToPhieuMuon(row));
   }
 
   getInventoryStatus(): InventoryReport {
-    const rows = this.db.prepare(
-      'SELECT tinhTrang, COUNT(*) as count FROM Sach GROUP BY tinhTrang'
-    ).all() as { tinhTrang: string; count: number }[];
+    const totals = this.db.prepare(
+      'SELECT COUNT(*) AS soDauSach, COALESCE(SUM(soBanSao), 0) AS soBanSao, COALESCE(SUM(soMat), 0) AS soMat, COALESCE(SUM(soBaoTri), 0) AS soBaoTri FROM Sach'
+    ).get() as { soDauSach: number; soBanSao: number; soMat: number; soBaoTri: number };
 
-    const counts: Record<string, number> = {};
-    for (const row of rows) {
-      counts[row.tinhTrang] = row.count;
-    }
+    const loanRow = this.db.prepare(
+      'SELECT COUNT(*) AS count FROM PhieuMuon WHERE trangThai = ?'
+    ).get(TrangThaiPhieu.DANG_MUON) as { count: number };
 
-    const sanSang = counts[TinhTrangSach.SAN_SANG] ?? 0;
-    const daMuon = counts[TinhTrangSach.DA_MUON] ?? 0;
-    const baoTri = counts[TinhTrangSach.BAO_TRI] ?? 0;
-    const mat = counts[TinhTrangSach.MAT] ?? 0;
+    const soDangMuon = loanRow.count;
+    const soKhaDung = totals.soBanSao - totals.soMat - totals.soBaoTri - soDangMuon;
 
     return {
-      sanSang,
-      daMuon,
-      baoTri,
-      mat,
-      tongCong: sanSang + daMuon + baoTri + mat,
+      soDauSach: totals.soDauSach,
+      soBanSao: totals.soBanSao,
+      soKhaDung: Math.max(0, soKhaDung),
+      soDangMuon,
+      soBaoTri: totals.soBaoTri,
+      soMat: totals.soMat,
     };
   }
 

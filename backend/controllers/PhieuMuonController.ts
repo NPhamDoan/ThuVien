@@ -4,9 +4,9 @@ import {
   ValidationResult,
   BookStatus,
   ReturnResult,
-  TinhTrangSach,
   TrangThaiPhieu,
 } from '../types';
+import { removeDiacritics, matchesAny } from '../utils/diacritics';
 
 export class PhieuMuonController {
   private db: Database.Database;
@@ -23,9 +23,9 @@ export class PhieuMuonController {
       FROM PhieuMuon pm
       LEFT JOIN DocGia dg ON pm.maDocGia = dg.maDocGia
       LEFT JOIN Sach s ON pm.maSach = s.maSach
-      WHERE pm.trangThai = 'DANG_MUON'
+      WHERE pm.trangThai = ?
       ORDER BY pm.ngayMuon DESC
-    `).all() as Record<string, unknown>[];
+    `).all(TrangThaiPhieu.DANG_MUON) as Record<string, unknown>[];
     return rows.map((r) => ({
       ...this.mapRowToPhieuMuon(r),
       tenDocGia: r.tenDocGia as string | undefined,
@@ -34,39 +34,36 @@ export class PhieuMuonController {
   }
 
   searchActiveLoans(keyword: string, searchType: string = 'all'): (PhieuMuon & { tenDocGia?: string; tenSach?: string })[] {
-    const like = `%${keyword}%`;
-    let whereClause: string;
-    let params: string[];
-
-    switch (searchType) {
-      case 'docgia':
-        whereClause = 'AND (dg.hoTen LIKE ?)';
-        params = [like];
-        break;
-      case 'sach':
-        whereClause = 'AND (s.tieuDe LIKE ?)';
-        params = [like];
-        break;
-      case 'maphieu':
-        whereClause = 'AND (pm.maPhieu LIKE ?)';
-        params = [like];
-        break;
-      default:
-        whereClause = 'AND (dg.hoTen LIKE ? OR s.tieuDe LIKE ? OR pm.maPhieu LIKE ? OR pm.maDocGia LIKE ? OR pm.maSach LIKE ?)';
-        params = [like, like, like, like, like];
-        break;
-    }
-
+    // Load all active loans with reader/book names
     const rows = this.db.prepare(`
       SELECT pm.*, dg.hoTen AS tenDocGia, s.tieuDe AS tenSach
       FROM PhieuMuon pm
       LEFT JOIN DocGia dg ON pm.maDocGia = dg.maDocGia
       LEFT JOIN Sach s ON pm.maSach = s.maSach
-      WHERE pm.trangThai = 'DANG_MUON'
-        ${whereClause}
+      WHERE pm.trangThai = ?
       ORDER BY pm.ngayMuon DESC
-    `).all(...params) as Record<string, unknown>[];
-    return rows.map((r) => ({
+    `).all(TrangThaiPhieu.DANG_MUON) as Record<string, unknown>[];
+
+    const filtered = rows.filter((r) => {
+      const tenDocGia = r.tenDocGia as string | undefined;
+      const tenSach = r.tenSach as string | undefined;
+      const maPhieu = r.maPhieu as string;
+      const maDocGia = r.maDocGia as string;
+      const maSach = r.maSach as string;
+
+      switch (searchType) {
+        case 'docgia':
+          return matchesAny([tenDocGia, maDocGia], keyword);
+        case 'sach':
+          return matchesAny([tenSach, maSach], keyword);
+        case 'maphieu':
+          return matchesAny([maPhieu], keyword);
+        default:
+          return matchesAny([tenDocGia, tenSach, maPhieu, maDocGia, maSach], keyword);
+      }
+    });
+
+    return filtered.map((r) => ({
       ...this.mapRowToPhieuMuon(r),
       tenDocGia: r.tenDocGia as string | undefined,
       tenSach: r.tenSach as string | undefined,
@@ -93,26 +90,42 @@ export class PhieuMuonController {
   }
 
   checkBookAvailability(maSach: string): BookStatus {
-    const row = this.db.prepare(
-      'SELECT maSach, tinhTrang FROM Sach WHERE maSach = ?'
-    ).get(maSach) as { maSach: string; tinhTrang: string } | undefined;
+    const book = this.db.prepare(
+      'SELECT soBanSao, soMat, soBaoTri FROM Sach WHERE maSach = ?'
+    ).get(maSach) as { soBanSao: number; soMat: number; soBaoTri: number } | undefined;
 
-    if (!row) {
-      return { available: false, tinhTrang: TinhTrangSach.SAN_SANG, message: 'Mã sách không tồn tại' };
+    if (!book) {
+      return { available: false, soKhaDung: 0, message: 'Mã sách không tồn tại' };
     }
 
-    if (row.tinhTrang !== TinhTrangSach.SAN_SANG) {
-      return { available: false, tinhTrang: row.tinhTrang as TinhTrangSach, message: 'Sách không khả dụng' };
+    const soDangMuon = (this.db.prepare(
+      'SELECT COUNT(*) as count FROM PhieuMuon WHERE maSach = ? AND trangThai = ?'
+    ).get(maSach, TrangThaiPhieu.DANG_MUON) as { count: number }).count;
+
+    const soKhaDung = book.soBanSao - book.soMat - book.soBaoTri - soDangMuon;
+
+    if (soKhaDung <= 0) {
+      return { available: false, soKhaDung, message: 'Hết bản khả dụng để mượn' };
     }
 
-    return { available: true, tinhTrang: TinhTrangSach.SAN_SANG };
+    return { available: true, soKhaDung };
   }
 
   // === Task 7.3: createLoan ===
 
   createLoan(maDocGia: string, maSach: string): PhieuMuon {
     const createLoanTx = this.db.transaction(() => {
-      const maPhieu = 'PM' + Date.now();
+      // Re-check availability inside transaction (race-condition safe)
+      const book = this.db.prepare('SELECT soBanSao, soMat, soBaoTri FROM Sach WHERE maSach = ?').get(maSach) as { soBanSao: number; soMat: number; soBaoTri: number } | undefined;
+      if (!book) throw new Error('Mã sách không tồn tại');
+      const soDangMuon = (this.db.prepare('SELECT COUNT(*) as count FROM PhieuMuon WHERE maSach = ? AND trangThai = ?').get(maSach, TrangThaiPhieu.DANG_MUON) as { count: number }).count;
+      if (book.soBanSao - book.soMat - book.soBaoTri - soDangMuon <= 0) {
+        throw new Error('Hết bản khả dụng để mượn');
+      }
+
+      const last = this.db.prepare("SELECT maPhieu FROM PhieuMuon WHERE maPhieu LIKE 'PM%' ORDER BY CAST(SUBSTR(maPhieu, 3) AS INTEGER) DESC LIMIT 1").get() as { maPhieu: string } | undefined;
+      const nextNum = last ? parseInt(last.maPhieu.substring(2)) + 1 : 1;
+      const maPhieu = 'PM' + String(nextNum).padStart(3, '0');
       const ngayMuon = new Date().toISOString().split('T')[0];
       const hanTraDate = new Date();
       hanTraDate.setDate(hanTraDate.getDate() + 14);
@@ -120,12 +133,10 @@ export class PhieuMuonController {
 
       this.db.prepare(`
         INSERT INTO PhieuMuon (maPhieu, maDocGia, maSach, ngayMuon, hanTra, trangThai, tienPhat)
-        VALUES (?, ?, ?, ?, ?, 'DANG_MUON', 0)
-      `).run(maPhieu, maDocGia, maSach, ngayMuon, hanTra);
+        VALUES (?, ?, ?, ?, ?, ?, 0)
+      `).run(maPhieu, maDocGia, maSach, ngayMuon, hanTra, TrangThaiPhieu.DANG_MUON);
 
-      this.db.prepare(`
-        UPDATE Sach SET tinhTrang = 'DA_MUON', updatedAt = datetime('now') WHERE maSach = ?
-      `).run(maSach);
+      // KHÔNG update Sach nữa - availability tự derive từ counters + PhieuMuon
 
       const row = this.db.prepare('SELECT * FROM PhieuMuon WHERE maPhieu = ?').get(maPhieu) as Record<string, unknown>;
       return this.mapRowToPhieuMuon(row);
@@ -145,10 +156,40 @@ export class PhieuMuonController {
     return this.mapRowToPhieuMuon(row);
   }
 
+  /** Get loan details với đầy đủ thông tin độc giả + sách (cho in phiếu) */
+  getLoanDetails(maPhieu: string) {
+    const row = this.db.prepare(`
+      SELECT pm.*,
+             dg.hoTen AS dg_hoTen, dg.email AS dg_email, dg.soDienThoai AS dg_soDienThoai,
+             s.tieuDe AS s_tieuDe, s.tacGia AS s_tacGia
+      FROM PhieuMuon pm
+      LEFT JOIN DocGia dg ON pm.maDocGia = dg.maDocGia
+      LEFT JOIN Sach s ON pm.maSach = s.maSach
+      WHERE pm.maPhieu = ?
+    `).get(maPhieu) as Record<string, unknown> | undefined;
+
+    if (!row) return null;
+
+    return {
+      ...this.mapRowToPhieuMuon(row),
+      docGia: {
+        maDocGia: row.maDocGia as string,
+        hoTen: row.dg_hoTen as string,
+        email: row.dg_email as string,
+        soDienThoai: row.dg_soDienThoai as string,
+      },
+      sach: {
+        maSach: row.maSach as string,
+        tieuDe: row.s_tieuDe as string,
+        tacGia: row.s_tacGia as string,
+      },
+    };
+  }
+
   findLoanByBook(maSach: string): PhieuMuon | null {
     const row = this.db.prepare(
-      "SELECT * FROM PhieuMuon WHERE maSach = ? AND trangThai = 'DANG_MUON'"
-    ).get(maSach) as Record<string, unknown> | undefined;
+      'SELECT * FROM PhieuMuon WHERE maSach = ? AND trangThai = ?'
+    ).get(maSach, TrangThaiPhieu.DANG_MUON) as Record<string, unknown> | undefined;
 
     if (!row) return null;
     return this.mapRowToPhieuMuon(row);
@@ -167,7 +208,7 @@ export class PhieuMuonController {
 
   // === Task 8.5: returnBook ===
 
-  returnBook(maPhieu: string): ReturnResult {
+  returnBook(maPhieu: string, options: { daMatSach?: boolean; phiMat?: number } = {}): ReturnResult {
     const returnBookTx = this.db.transaction(() => {
       const loan = this.findLoanByCode(maPhieu);
 
@@ -180,19 +221,24 @@ export class PhieuMuonController {
       }
 
       const ngayTraThucTe = new Date();
-      const tienPhat = this.calculateFine(loan.hanTra, ngayTraThucTe);
+      const finePhatTre = this.calculateFine(loan.hanTra, ngayTraThucTe);
+      const phiMat = options.daMatSach ? (options.phiMat ?? 0) : 0;
+      const tienPhat = finePhatTre + phiMat;
       const ngayTraStr = ngayTraThucTe.toISOString().split('T')[0];
 
       this.db.prepare(`
-        UPDATE PhieuMuon SET trangThai = 'DA_TRA', ngayTraThucTe = ?, tienPhat = ?, updatedAt = datetime('now')
+        UPDATE PhieuMuon SET trangThai = ?, ngayTraThucTe = ?, tienPhat = ?, updatedAt = datetime('now')
         WHERE maPhieu = ?
-      `).run(ngayTraStr, tienPhat, maPhieu);
+      `).run(TrangThaiPhieu.DA_TRA, ngayTraStr, tienPhat, maPhieu);
 
-      this.db.prepare(`
-        UPDATE Sach SET tinhTrang = 'SAN_SANG', updatedAt = datetime('now') WHERE maSach = ?
-      `).run(loan.maSach);
+      // Nếu sách bị mất, tăng counter soMat
+      if (options.daMatSach) {
+        this.db.prepare(
+          `UPDATE Sach SET soMat = soMat + 1, updatedAt = datetime('now') WHERE maSach = ?`
+        ).run(loan.maSach);
+      }
 
-      return { success: true, tienPhat, ngayTraThucTe };
+      return { success: true, tienPhat, ngayTraThucTe, daMatSach: options.daMatSach };
     });
 
     return returnBookTx();
@@ -211,13 +257,13 @@ export class PhieuMuonController {
       throw new Error('Phiếu mượn đã hoàn tất, không thể gia hạn');
     }
 
-    const newHanTra = new Date(loan.hanTra);
-    newHanTra.setDate(newHanTra.getDate() + 7);
-    const newHanTraStr = newHanTra.toISOString().split('T')[0];
+    const hanTraMoi = new Date(loan.hanTra);
+    hanTraMoi.setDate(hanTraMoi.getDate() + 7);
+    const hanTraMoiStr = hanTraMoi.toISOString().split('T')[0];
 
     this.db.prepare(`
       UPDATE PhieuMuon SET hanTra = ?, updatedAt = datetime('now') WHERE maPhieu = ?
-    `).run(newHanTraStr, maPhieu);
+    `).run(hanTraMoiStr, maPhieu);
 
     return this.findLoanByCode(maPhieu)!;
   }

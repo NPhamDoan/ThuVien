@@ -31,13 +31,46 @@ export const authApi = {
     api.post('/auth/logout', { maTaiKhoan }),
 };
 
+// Account Management APIs
+export const accountApi = {
+  list: () => api.get('/auth/accounts'),
+  create: (data: { tenDangNhap: string; matKhau: string; vaiTro: string }) =>
+    api.post('/auth/accounts', data),
+  updateStatus: (id: string, trangThai: string) =>
+    api.put(`/auth/accounts/${id}/status`, { trangThai }),
+  resetPassword: (id: string, matKhau: string) =>
+    api.put(`/auth/accounts/${id}/password`, { matKhau }),
+  delete: (id: string) =>
+    api.delete(`/auth/accounts/${id}`),
+};
+
+// Backup APIs (admin only)
+export const backupApi = {
+  list: () => api.get('/backups'),
+  create: () => api.post('/backups/create'),
+  download: async (name: string) => {
+    const { data } = await api.get(`/backups/download/${encodeURIComponent(name)}`, {
+      responseType: 'blob',
+    });
+    // Trigger browser download
+    const url = URL.createObjectURL(data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+};
+
 // Book APIs
 export const bookApi = {
   list: () =>
     api.get('/books'),
   search: (params: { tieuDe?: string; tacGia?: string; maSach?: string; keyword?: string; tinhTrang?: string }) =>
     api.get('/books/search', { params }),
-  create: (data: { tieuDe: string; tacGia: string }) =>
+  create: (data: { tieuDe: string; tacGia: string; soBanSao?: number }) =>
     api.post('/books', data),
   update: (id: string, data: Record<string, unknown>) =>
     api.put(`/books/${id}`, data),
@@ -69,8 +102,10 @@ export const loanApi = {
     api.post('/loans', { maDocGia, maSach }),
   getById: (id: string) =>
     api.get(`/loans/${id}`),
-  returnBook: (id: string) =>
-    api.post(`/loans/${id}/return`),
+  getDetails: (id: string) =>
+    api.get(`/loans/${id}/details`),
+  returnBook: (id: string, options?: { daMatSach?: boolean; phiMat?: number }) =>
+    api.post(`/loans/${id}/return`, options || {}),
   extend: (id: string) =>
     api.post(`/loans/${id}/extend`),
 };

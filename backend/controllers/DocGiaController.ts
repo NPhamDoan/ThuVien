@@ -1,11 +1,27 @@
 import Database from 'better-sqlite3';
-import { DocGia, CreateDocGiaInput, UpdateDocGiaInput, DeleteResult } from '../types';
+import { DocGia, CreateDocGiaInput, UpdateDocGiaInput, DeleteResult, TrangThaiPhieu } from '../types';
+import { filterByKeyword } from '../utils/diacritics';
 
 export class DocGiaController {
   private db: Database.Database;
 
   constructor(db: Database.Database) {
     this.db = db;
+  }
+
+  listReaders(): DocGia[] {
+    const rows = this.db.prepare('SELECT * FROM DocGia ORDER BY createdAt DESC').all() as Record<string, unknown>[];
+    return rows.map(r => this.mapRowToDocGia(r));
+  }
+
+  getReaderById(maDocGia: string): DocGia | null {
+    const row = this.db.prepare('SELECT * FROM DocGia WHERE maDocGia = ?').get(maDocGia) as Record<string, unknown> | undefined;
+    return row ? this.mapRowToDocGia(row) : null;
+  }
+
+  searchReaders(keyword: string): DocGia[] {
+    const all = this.listReaders();
+    return filterByKeyword(all, keyword, r => [r.maDocGia, r.hoTen, r.email, r.soDienThoai]);
   }
 
   createMember(data: CreateDocGiaInput): DocGia {
@@ -16,7 +32,9 @@ export class DocGiaController {
       throw new Error('email là trường bắt buộc');
     }
 
-    const maDocGia = 'DG' + Date.now();
+    const last = this.db.prepare("SELECT maDocGia FROM DocGia WHERE maDocGia LIKE 'DG%' ORDER BY CAST(SUBSTR(maDocGia, 3) AS INTEGER) DESC LIMIT 1").get() as { maDocGia: string } | undefined;
+    const nextNum = last ? parseInt(last.maDocGia.substring(2)) + 1 : 1;
+    const maDocGia = 'DG' + String(nextNum).padStart(3, '0');
     const ngayHetHan = data.ngayHetHan instanceof Date
       ? data.ngayHetHan.toISOString()
       : String(data.ngayHetHan);
@@ -73,15 +91,15 @@ export class DocGiaController {
     }
 
     // Delete returned loans first to satisfy FK constraint
-    this.db.prepare("DELETE FROM PhieuMuon WHERE maDocGia = ? AND trangThai = 'DA_TRA'").run(maDocGia);
+    this.db.prepare('DELETE FROM PhieuMuon WHERE maDocGia = ? AND trangThai = ?').run(maDocGia, TrangThaiPhieu.DA_TRA);
     this.db.prepare('DELETE FROM DocGia WHERE maDocGia = ?').run(maDocGia);
     return { success: true };
   }
 
   hasActiveLoans(maDocGia: string): boolean {
     const row = this.db.prepare(
-      "SELECT COUNT(*) as count FROM PhieuMuon WHERE maDocGia = ? AND trangThai = 'DANG_MUON'"
-    ).get(maDocGia) as { count: number };
+      'SELECT COUNT(*) as count FROM PhieuMuon WHERE maDocGia = ? AND trangThai = ?'
+    ).get(maDocGia, TrangThaiPhieu.DANG_MUON) as { count: number };
 
     return row.count > 0;
   }

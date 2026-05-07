@@ -36,7 +36,7 @@ export default function LoginPage() {
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: '#F1F5F9', padding: 40,
+      background: '#fff', padding: 40,
     }}>
       <div style={{
         display: 'flex', maxWidth: 960, width: '100%',
@@ -50,47 +50,23 @@ export default function LoginPage() {
           flex: 1, display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center',
           padding: '48px 40px',
-          background: 'linear-gradient(180deg, #F8FAFC 0%, #E2E8F0 100%)',
+          background: '#fff',
           position: 'relative', overflow: 'hidden',
         }}>
           {/* Decorative blob */}
-          <svg viewBox="0 0 400 400" style={{ position: 'absolute', width: '120%', height: '120%', opacity: 0.3 }}>
-            <path d="M200,20 C300,20 380,100 380,200 C380,300 300,380 200,380 C100,380 20,300 20,200 C20,100 100,20 200,20 Z"
-              fill="#99F6E4" />
+          <svg viewBox="0 0 400 400" style={{ position: 'absolute', width: '90%', height: '90%', opacity: 0.3 }}>
+            <circle cx="200" cy="200" r="180" fill="#99F6E4" />
           </svg>
 
           {/* Book illustration using SVG */}
           <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', animation: 'fadeInUp 0.6s ease-out 0.1s both' }}>
-            <svg width="220" height="180" viewBox="0 0 220 180" fill="none" style={{ marginBottom: 24 }}>
-              {/* Open book */}
-              <path d="M30 140 L110 120 L110 30 L30 50 Z" fill="#CBD5E1" stroke="#0F766E" strokeWidth="2"/>
-              <path d="M190 140 L110 120 L110 30 L190 50 Z" fill="#E2E8F0" stroke="#0F766E" strokeWidth="2"/>
-              {/* Book spine */}
-              <line x1="110" y1="30" x2="110" y2="120" stroke="#0F766E" strokeWidth="2"/>
-              {/* Page lines left */}
-              <line x1="50" y1="65" x2="95" y2="55" stroke="#5EEAD4" strokeWidth="1.5" opacity="0.5"/>
-              <line x1="50" y1="80" x2="95" y2="70" stroke="#5EEAD4" strokeWidth="1.5" opacity="0.5"/>
-              <line x1="50" y1="95" x2="95" y2="85" stroke="#5EEAD4" strokeWidth="1.5" opacity="0.5"/>
-              <line x1="50" y1="110" x2="80" y2="103" stroke="#5EEAD4" strokeWidth="1.5" opacity="0.5"/>
-              {/* Page lines right */}
-              <line x1="125" y1="55" x2="170" y2="65" stroke="#5EEAD4" strokeWidth="1.5" opacity="0.5"/>
-              <line x1="125" y1="70" x2="170" y2="80" stroke="#5EEAD4" strokeWidth="1.5" opacity="0.5"/>
-              <line x1="125" y1="85" x2="170" y2="95" stroke="#5EEAD4" strokeWidth="1.5" opacity="0.5"/>
-              {/* Floating elements */}
-              <circle cx="45" cy="25" r="6" fill="#5EEAD4" opacity="0.4"/>
-              <circle cx="175" cy="20" r="4" fill="#0F766E" opacity="0.3"/>
-              <rect x="160" y="35" width="12" height="12" rx="2" fill="#CBD5E1" transform="rotate(15 166 41)"/>
-              {/* Light bulb */}
-              <circle cx="110" cy="12" r="8" fill="none" stroke="#0F766E" strokeWidth="1.5"/>
-              <line x1="110" y1="4" x2="110" y2="0" stroke="#0F766E" strokeWidth="1.5"/>
-              <line x1="104" y1="6" x2="101" y2="3" stroke="#0F766E" strokeWidth="1"/>
-              <line x1="116" y1="6" x2="119" y2="3" stroke="#0F766E" strokeWidth="1"/>
-              {/* Chat bubbles */}
-              <rect x="15" y="100" width="20" height="14" rx="4" fill="#0F766E"/>
-              <rect x="170" y="100" width="24" height="14" rx="4" fill="#0F766E"/>
-              {/* Heart */}
-              <path d="M170 25 C170 22 174 20 176 22 C178 20 182 22 182 25 C182 30 176 33 176 33 C176 33 170 30 170 25Z" fill="#5EEAD4" opacity="0.5"/>
-            </svg>
+            <img
+              src="/book-illustration.svg"
+              alt="PTIT Logo"
+              width={220}
+              height={180}
+              style={{ marginBottom: 24 }}
+            />
 
             <Title level={3} style={{
               color: '#1E293B', margin: '0 0 8px',
@@ -166,7 +142,12 @@ export default function LoginPage() {
 
           <div style={{ textAlign: 'center', marginTop: 16 }}>
             <Text style={{ color: '#A8A29E', fontSize: 13 }}>
-              Tài khoản mẫu: <span style={{ color: '#0F766E', fontWeight: 600 }}>thuthu</span> / <span style={{ color: '#0F766E', fontWeight: 600 }}>123456</span>
+              Tài khoản mẫu 1: <span style={{ color: '#0F766E', fontWeight: 600 }}>thuthu</span> / <span style={{ color: '#0F766E', fontWeight: 600 }}>123456</span>
+            </Text>
+            </div>
+          <div style={{ textAlign: 'center', marginTop: 16 }}>
+            <Text style={{ color: '#A8A29E', fontSize: 13 }}>
+              Tài khoản mẫu 2: <span style={{ color: '#0F766E', fontWeight: 600 }}>admin</span> / <span style={{ color: '#0F766E', fontWeight: 600 }}>123456</span>
             </Text>
           </div>
         </div>
